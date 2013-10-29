@@ -10,54 +10,57 @@ This is a skeleton sender class. Create a fantastic transport protocol here.
 class Sender(BasicSender.BasicSender):
     def __init__(self, dest, port, filename, debug=False):
         super(Sender, self).__init__(dest, port, filename, debug)
+        self.buffer = []
+        self.windowSize = 5
+        self.packets_in_transit = 0
         self.seqno = 0
-        self.msg_table = {}
-        self.window_size = 4
-    
+
     # Main sending loop.
     def start(self):
-        self.segment_file()
+        #Initiate communication
         
-        msg_type = None
-        while not msg_type == 'end':
+        while 
         
-            for i in range(self.seqno, self.seqno + self.window_size):
-                msg_type = 'data'
-                if i == 0: 
-                    msg_type = 'start'
-                else:
-                    if self.msg_table[i+1] == "": msg_type = 'end'
-                    
-    
-                packet = self.make_packet(msg_type,i,self.msg_table[i])
-                self.send(packet)
-                print "sent: %s" % packet
-
-            
-            response = self.receive(0.5)
-            self.handle_response(response)
-            
-    def segment_file(self):
-        msg = None
-        seqno = 0
-        while msg != "":
+    """
+    Sends first window of packets, ensures first ack is received (TODO: Deal 100% packet loss)
+    Note: Does not ensure full window is acked!
+    """
+    def initiate_conversation(self,seq):
+        for i in range(0, self.windowSize):
             msg = self.infile.read(1372)
-            self.msg_table[seqno] = msg
-            seqno += 1
-
-        
-    def handle_response(self,response_packet):
-        if response_packet == None:
+            self.buffer.append(msg)
+            #End of file has been read.
+            if msg == "":
+                #Empty msg, need to send empty start and end packets.
+                if i == 0: self.buffer.append("")
+                break
+            
+        #Will break out if we get a valid ack
+        received_valid_ack = False
+        while(not received_valid_ack)
+            #Will keep sending all the packets in the first window, except the end packet.
+            for i in range(0, len(self.buffer)):
+                if i == 0: msg_type = 'start'
+                elif i == len(self.buffer) - 1: break
+                else: msg_type = 'data'
+                
+                packet = self.make_packet(msg_type, i, buffer[i])
+                self.send(packet)
+                self.packets_in_transit += 1
+            response = self.receive(0.5)
+            received_valid_ack = response != None and Checksum.validate_checksum(response)
+        self.handle_response(response)
+    
+    def handle_response(self, response):
+        if response == None:
             self.handle_timeout()
-        else:
-            if Checksum.validate_checksum(response_packet):
-                self.seqno += 1
-                print "recv: %s" % response_packet
-            else:
-                return
-
+        elif not Checksum.validate_checksum(response):
+            return
+        elif packet.
+        
     def handle_timeout(self):
-        print "didn't receive anything"
+        self.packets_in_transit = 0
+
 
     def handle_new_ack(self, ack):
         pass
