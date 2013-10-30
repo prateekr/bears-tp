@@ -15,6 +15,7 @@ class Sender(BasicSender.BasicSender):
         self.packets_in_transit = 0
         self.seqno = 1
         self.segmented_all_file = False
+        self.last_seqno = float('inf')
 
     # Main sending loop.
     def start(self):
@@ -30,13 +31,18 @@ class Sender(BasicSender.BasicSender):
     Note: Does not ensure full window is acked!
     """
     def initiate_conversation(self):
-        for i in range(0, self.windowSize):
+        for i in range(1, self.windowSize + 1):
             msg = self.infile.read(1372)
             self.buffer[i] = msg
             #End of file has been read.
             if msg == "":
                 #Empty msg, need to send empty start and end packets.
-                if i == 0: self.buffer[i] = ""
+                if i == 1: 
+                    self.buffer[i+1] = ""
+                    self.last_seqno = i+1
+                else:
+                    self.last_seqno = i
+
                 self.segmented_all_file = True
                 break
             
@@ -44,9 +50,9 @@ class Sender(BasicSender.BasicSender):
         received_valid_ack = False
         while(not received_valid_ack):
             #Will keep sending all the packets in the first window, except the end packet.
-            for i in range(0, len(self.buffer.keys())):
-                if i == 0: msg_type = 'start'
-                elif i == len(self.buffer.keys()) - 1: break
+            for i in range(1, len(self.buffer.keys())+1):
+                if i == 1: msg_type = 'start'
+                elif i == len(self.buffer.keys()): break
                 else: msg_type = 'data'
                 
                 packet = self.make_packet(msg_type, i, self.buffer[i])
@@ -63,7 +69,8 @@ class Sender(BasicSender.BasicSender):
             self.packets_in_transit -= 1
             return
         else:
-            msg_type, ack, data, checksum = self.split_packet(packet)
+            msg_type, ack, data, checksum = self.split_packet(response)
+            ack = int(ack)
             if self.seqno < ack:
                 self.handle_new_ack(ack)
             else:
@@ -72,6 +79,7 @@ class Sender(BasicSender.BasicSender):
         
     def handle_timeout(self):
         self.packets_in_transit = 0
+        self.send_max_transit_amount()
 
 
     def handle_new_ack(self, ack):
@@ -79,13 +87,7 @@ class Sender(BasicSender.BasicSender):
         if self.packets_in_transit < 0: self.packets_in_transit = 0
         self.seqno = ack
         self.update_buffer()
-        while self.packets_in_transit < 5:
-            packet_seqno = self.seqno + self.packets_in_transit
-            packet = self.make_packet(msg_type, seqno, self.buffer[packet_seqno])
-            self.send(packet)
-            self.packets_in_transit += 1
-
-
+        self.send_max_transit_amount()
 
     def handle_dup_ack(self, ack):
         if ack != self.seqno: return
@@ -97,8 +99,22 @@ class Sender(BasicSender.BasicSender):
         
         packet = self.make_packet(msg_type, self.seqno, self.buffer[self.seqno])
         self.send(packet)
-        
 
+    def send_max_transit_amount(self):
+        while self.packets_in_transit < 5 and self.seqno + self.packets_in_transit <= self.last_seqno:
+            packet_seqno = self.seqno + self.packets_in_transit
+
+            if self.segmented_all_file and packet_seqno == max(self.buffer.keys()):
+                msg_type = 'end'
+            else:
+                msg_type = 'data'
+
+            packet = self.make_packet(msg_type, packet_seqno, self.buffer[packet_seqno])
+            self.send(packet)
+            self.packets_in_transit += 1
+            if msg_type == 'end': break
+
+        
     def update_buffer(self):
         for key in self.buffer.keys():
             if key < self.seqno: del(self.buffer[key])
@@ -107,9 +123,11 @@ class Sender(BasicSender.BasicSender):
 
         while len(self.buffer.keys()) < 5:
             msg = self.infile.read(1372)
-            self.buffer[len(self.buffer.keys())+self.seqno] = msg
+            buffer_seqno = len(self.buffer.keys()) + self.seqno
+            self.buffer[buffer_seqno] = msg
             if msg == "":
                 self.segmented_all_file = True
+                self.last_seqno = buffer_seqno
                 break
 
     def log(self, msg):
