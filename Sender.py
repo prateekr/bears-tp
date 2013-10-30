@@ -24,15 +24,14 @@ class Sender(BasicSender.BasicSender):
         while len(self.buffer.keys()) != 0 or self.segmented_all_file == False:
             response = self.receive(0.5)
             self.handle_response(response)
-
-        
+    
     """
     Sends first window of packets, ensures first ack is received (TODO: Deal 100% packet loss)
     Note: Does not ensure full window is acked!
     """
     def initiate_conversation(self):
         for i in range(1, self.windowSize + 1):
-            msg = self.infile.read(1372)
+            msg = self.infile.read(500)
             self.buffer[i] = msg
             #End of file has been read.
             if msg == "":
@@ -44,6 +43,7 @@ class Sender(BasicSender.BasicSender):
                     self.last_seqno = i
 
                 self.segmented_all_file = True
+                self.infile.close()
                 break
             
         #Will break out if we get a valid ack
@@ -76,11 +76,9 @@ class Sender(BasicSender.BasicSender):
             else:
                 self.handle_dup_ack(ack)
 
-        
     def handle_timeout(self):
         self.packets_in_transit = 0
         self.send_max_transit_amount()
-
 
     def handle_new_ack(self, ack):
         self.packets_in_transit -= ack - self.seqno
@@ -113,7 +111,6 @@ class Sender(BasicSender.BasicSender):
             self.send(packet)
             self.packets_in_transit += 1
             if msg_type == 'end': break
-
         
     def update_buffer(self):
         for key in self.buffer.keys():
@@ -128,6 +125,7 @@ class Sender(BasicSender.BasicSender):
             if msg == "":
                 self.segmented_all_file = True
                 self.last_seqno = buffer_seqno
+                self.infile.close()
                 break
 
     def log(self, msg):
